@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.example.uhf"
+    android:versionCode="1"
+    android:versionName="1.0">
+
+    <!-- Permissões -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <uses-feature android:name="android.hardware.camera" />
+    <uses-feature android:name="android.hardware.camera.autofocus" />
+    <uses-feature android:name="android.hardware.screen.portrait" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/CustomTheme">
+
+        <!-- ✅ PROVIDER OBRIGATÓRIO (para compartilhar PDF/TXT no Android 7+) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+        <!-- ✅ FIM DO PROVIDER -->
+
+        <activity
+            android:name=".activity.LoginActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name="com.example.uhf.BootBroadcastReceiver"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </receiver>
+
+        <activity android:name="com.example.uhf.filebrowser.FileManagerActivity"
+            android:configChanges="orientation|screenSize"
+            android:exported="true" />
+
+        <activity android:name=".activity.ConfigActivity" />
+        <activity android:name=".activity.DashboardActivity"/>
+        <activity android:name=".activity.LocalizacaoActivity"/>
+        <activity android:name=".activity.Easyleituratag"/>
+        <activity android:name=".activity.GerainventarioActivity"/>
+        <activity android:name=".activity.GeraRelatorioActivity"/>
+        <activity android:name=".activity.LeituraLocalActivity"/>
+
+
+        <activity android:name="com.example.uhf.activity.UHFMainActivity" />
+
+    </application>
+
+</manifest>

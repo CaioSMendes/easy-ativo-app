@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+android:layout_width="match_parent"
+android:layout_height="72dp"
+android:orientation="horizontal"
+android:padding="12dp"
+android:gravity="center_vertical"
+android:background="?android:attr/selectableItemBackground">
+
+<!-- Imagem do ativo -->
+<ImageView
+    android:id="@+id/imgPatrimonio"
+    android:layout_width="48dp"
+    android:layout_height="48dp"
+    android:src="@drawable/ic_etiqueta"
+    android:contentDescription="Imagem do Patrimônio"
+    android:scaleType="centerCrop"
+    android:layout_marginEnd="12dp" />
+
+<!-- Dados do ativo -->
+<LinearLayout
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_weight="1">
+
+    <TextView
+        android:id="@+id/txtTag"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Código de Barra"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:textColor="#333333"/>
+
+</LinearLayout>
+</LinearLayout>
