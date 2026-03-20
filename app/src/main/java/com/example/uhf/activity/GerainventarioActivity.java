@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -96,6 +97,9 @@ public class GerainventarioActivity extends AppCompatActivity {
                 int responseCode = conn.getResponseCode();
                 if (responseCode < 200 || responseCode >= 300) {
                     Log.e(TAG, "Erro ao buscar ativos da API, response code: " + responseCode);
+                    runOnUiThread(() ->
+                            Toast.makeText(this, "Erro ao buscar ativos: " + responseCode, Toast.LENGTH_LONG).show()
+                    );
                     return;
                 }
 
@@ -110,31 +114,27 @@ public class GerainventarioActivity extends AppCompatActivity {
                 JSONArray ativosApi = new JSONArray(resposta.toString());
                 Log.d(TAG, "Ativos da API recebidos: " + ativosApi.length());
 
-                // Montar JSON do inventário com todos os RFIDs lidos
                 JSONObject jsonInventario = montarJsonInventario(tags, ativosApi, localizacaoJson, usuarioID);
 
-                // Atualizar a UI
+                // ✅ Atualiza UI sem mostrar JSON bruto
                 runOnUiThread(() -> {
                     try {
-                        // Atualiza nome do último nível
                         TextView tvUltimoNivelNome = findViewById(R.id.tvUltimoNivelNome);
                         tvUltimoNivelNome.setText(
                                 "Itens " + jsonInventario.getString("ultimoNivelNome") +
                                         ": " + jsonInventario.getInt("countItensUltimoNivel")
                         );
 
-                        // Atualiza contadores coloridos
-                        TextView tvEncontrados = findViewById(R.id.tvEncontrados);
-                        TextView tvMovimentados = findViewById(R.id.tvMovimentados);
+                        TextView tvEncontrados    = findViewById(R.id.tvEncontrados);
+                        TextView tvMovimentados   = findViewById(R.id.tvMovimentados);
                         TextView tvNaoEncontrados = findViewById(R.id.tvNaoEncontrados);
 
-                        tvEncontrados.setText("ENCONTRADOS: " + jsonInventario.getInt("totalEncontrados"));
-                        tvMovimentados.setText("MOVIMENTADOS: " + jsonInventario.getInt("totalMovimentados"));
+                        tvEncontrados.setText("ENCONTRADOS: "        + jsonInventario.getInt("totalEncontrados"));
+                        tvMovimentados.setText("MOVIMENTADOS: "      + jsonInventario.getInt("totalMovimentados"));
                         tvNaoEncontrados.setText("NÃO ENCONTRADOS: " + jsonInventario.getInt("totalNaoEncontrados"));
 
-                        // Atualiza o TextView de relatório com a resposta da API
-                        TextView tvRelatorio = findViewById(R.id.tvRelatorio);
-                        tvRelatorio.setText("Relatório gerado:\n" + resposta.toString());
+                        // ✅ Mostra mensagem de aguardo — sem JSON bruto
+                        tvRelatorio.setText("Enviando inventário...");
 
                     } catch (Exception e) {
                         Log.e(TAG, "Erro atualizando a UI", e);
@@ -146,6 +146,9 @@ public class GerainventarioActivity extends AppCompatActivity {
 
             } catch (Exception e) {
                 Log.e(TAG, "Erro no GET de ativos ou montagem de inventário", e);
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Erro: " + e.getMessage(), Toast.LENGTH_LONG).show()
+                );
             }
         }).start();
     }
@@ -208,6 +211,11 @@ public class GerainventarioActivity extends AppCompatActivity {
                     case "NAO_ENCONTRADO": totalNaoEncontrados++; break;
                 }
 
+                if (identificadorAtivo == 0) {
+                    Log.w(TAG, "⚠️ Pulando item sem identificador: " + rfidLido);
+                    continue;
+                }
+
                 JSONObject ativo = new JSONObject();
                 ativo.put("identificador",      identificadorAtivo);
                 ativo.put("localizacaoId",      localizacaoAtivo);
@@ -257,9 +265,19 @@ public class GerainventarioActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 String baseUrl = ConfigActivity.getBaseUrl(this);
-                String apiUrl = baseUrl + "mobile/importar_ordem_servico";
+                String apiUrl  = baseUrl + "mobile/importar_ordem_servico";
 
-                Log.d(TAG, "INICIANDO ENVIO PARA API");
+                JSONArray itens = json.optJSONArray("ordemServicoHasAtivos");
+                if (itens == null || itens.length() == 0) {
+                    runOnUiThread(() -> {
+                        tvRelatorio.setText("Nenhum item válido para enviar.");
+                        Toast.makeText(this, "Nenhum item válido!", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+
+                Log.d(TAG, "INICIANDO ENVIO — " + itens.length() + " itens");
+                Log.d(TAG, "JSON enviado: " + json.toString());
 
                 URL url = new URL(apiUrl);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -269,39 +287,44 @@ public class GerainventarioActivity extends AppCompatActivity {
                 conn.setReadTimeout(15000);
                 conn.setDoOutput(true);
 
-                // Envia o JSON
+                // ✅ Envia tudo de uma vez
                 OutputStream os = conn.getOutputStream();
                 os.write(json.toString().getBytes("UTF-8"));
                 os.flush();
                 os.close();
 
                 int responseCode = conn.getResponseCode();
+                Log.d(TAG, "Response code: " + responseCode);
 
-                // Lê a resposta da API
                 BufferedReader br = new BufferedReader(
                         responseCode >= 200 && responseCode < 300
                                 ? new InputStreamReader(conn.getInputStream())
                                 : new InputStreamReader(conn.getErrorStream())
                 );
-
-                String linha;
                 StringBuilder respostaAPI = new StringBuilder();
-                while ((linha = br.readLine()) != null) {
-                    respostaAPI.append(linha);
-                }
+                String linha;
+                while ((linha = br.readLine()) != null) respostaAPI.append(linha);
                 br.close();
 
-                Log.d(TAG, "RESPOSTA DA API:");
-                Log.d(TAG, respostaAPI.toString());
+                Log.d(TAG, "RESPOSTA DA API: " + respostaAPI.toString());
 
-                // Atualiza o TextView na UI com a resposta da API
                 runOnUiThread(() -> {
-                    tvRelatorio.setText("Inventário:" + respostaAPI.toString());
+                    // ✅ Só mostra o código HTTP na tela
+                    tvRelatorio.setText("Relatório: " + respostaAPI.toString());
+
+                    if (responseCode >= 200 && responseCode < 300) {
+                        Toast.makeText(this, "Inventário enviado! Código: " + responseCode, Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(this, "Erro " + responseCode + " ao enviar", Toast.LENGTH_LONG).show();
+                    }
                 });
 
             } catch (Exception e) {
                 Log.e(TAG, "ERRO ENVIANDO INVENTÁRIO", e);
-                runOnUiThread(() -> tvRelatorio.setText("ERRO ao enviar inventário"));
+                runOnUiThread(() -> {
+                    tvRelatorio.setText("Erro: " + e.getMessage());
+                    Toast.makeText(this, "Erro: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
             }
         }).start();
     }

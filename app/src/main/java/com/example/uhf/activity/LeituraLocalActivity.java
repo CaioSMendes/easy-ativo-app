@@ -72,6 +72,7 @@ public class LeituraLocalActivity extends AppCompatActivity {
     private TextView txtRfid, txtCodBar;
     private final Map<Integer, JSONObject> mapaCampos   = new HashMap<>();
     private final Map<Integer, JSONObject> mapaNiveis   = new HashMap<>();
+    private final Map<Integer, String> mapaLocais = new HashMap<>();
 
     // chave = epcChave (8 chars) → TagItem que está na listaTags
     private final Map<String, TagItem>    mapaTags      = new HashMap<>();
@@ -135,7 +136,7 @@ public class LeituraLocalActivity extends AppCompatActivity {
 
 
         toneGen = new ToneGenerator(AudioManager.STREAM_MUSIC, 100);
-        adapter = new TagItemAdapter(this, listaTags);
+        adapter = new TagItemAdapter(this, listaTags, mapaLocais);
         listViewTags.setAdapter(adapter);
 
         String localJson = getIntent().getStringExtra("LOCALIZACAO_JSON");
@@ -345,7 +346,15 @@ public class LeituraLocalActivity extends AppCompatActivity {
                 tag.status    = "NO LOCAL";
 
                 listaTags.add(tag);
-                mapaTags.put(chave, tag); // ✅ mesmo objeto da lista
+                mapaTags.put(chave, tag);
+            }
+
+            // ✅ Monta mapaLocais com nomes reais do banco
+            for (TagItem tag : listaTags) {
+                if (!mapaLocais.containsKey(tag.localizacaoId)) {
+                    String nome = dbHelper.buscarNomeLocalPorId(tag.localizacaoId);
+                    mapaLocais.put(tag.localizacaoId, nome);
+                }
             }
 
             Log.d(TAG, "Banco carregado: " + listaTags.size() + " itens para local " + localIdSelecionado);
@@ -397,7 +406,19 @@ public class LeituraLocalActivity extends AppCompatActivity {
             String baseUrl = ConfigActivity.getBaseUrl(this);
             int localIdSelecionado = obterUltimaLocalizacao(localizacaoSelecionada);
 
-            // --- Campos e níveis para descrição ---
+            // ✅ Busca localizações da API para montar mapaLocais com nomes reais
+            JSONArray localizacoesApi = lerUrl(baseUrl + "mobile/listar_localizacao");
+            mapaLocais.clear();
+            for (int i = 0; i < localizacoesApi.length(); i++) {
+                JSONObject loc = localizacoesApi.getJSONObject(i);
+                int idLoc   = loc.optInt("id", -1);
+                String nome = loc.optString("nome", "Local " + idLoc);
+                if (idLoc != -1) {
+                    mapaLocais.put(idLoc, nome);
+                    dbHelper.salvarOuAtualizarLocalizacao(loc, "LOCAL");
+                }
+            }
+
             JSONArray arrCampos = lerUrl(baseUrl + "mobile/listar_campo_multi_valor");
             JSONArray arrNiveis = lerUrl(baseUrl + "mobile/listar_nivel_campo_multi_valor");
 
@@ -412,10 +433,8 @@ public class LeituraLocalActivity extends AppCompatActivity {
                 mapaNiveis.put(n.getInt("id"), n);
             }
 
-            // --- Ativos da API ---
             JSONArray ativosApi = lerUrl(baseUrl + "mobile/listar_ativo");
 
-            // ✅ Monta mapaTodosAtivos com chave de 8 chars
             mapaTodosAtivos.clear();
             for (int i = 0; i < ativosApi.length(); i++) {
                 JSONObject ativo = ativosApi.getJSONObject(i);
@@ -427,8 +446,6 @@ public class LeituraLocalActivity extends AppCompatActivity {
 
             Log.d(TAG, "API carregada: " + mapaTodosAtivos.size() + " ativos");
 
-            // ✅ Passo 2a: Para cada ativo da API que pertence ao local,
-            //    salvar no banco e sincronizar com a lista
             for (Map.Entry<String, JSONObject> entry : mapaTodosAtivos.entrySet()) {
                 String     chave        = entry.getKey();
                 JSONObject ativo        = entry.getValue();
@@ -440,9 +457,8 @@ public class LeituraLocalActivity extends AppCompatActivity {
                         ? descobrirDescricao(listaMulti)
                         : ativo.optString("descricao", "Sem descrição");
 
-                // ✅ Sempre salva/atualiza no banco com ID correto da API
                 JSONObject ativoDB = new JSONObject();
-                ativoDB.put("id",           ativo.optInt("id"));   // ← ID real da API, não hashCode!
+                ativoDB.put("id",           ativo.optInt("id"));
                 ativoDB.put("rfid",         epcCompleto);
                 ativoDB.put("descricao",    descricao);
                 ativoDB.put("status",       "NO LOCAL");
@@ -451,10 +467,8 @@ public class LeituraLocalActivity extends AppCompatActivity {
 
                 if (localIdAtivo == localIdSelecionado) {
                     if (mapaTags.containsKey(chave)) {
-                        // Já na lista — só atualiza descrição, mantém status
                         mapaTags.get(chave).descricao = descricao;
                     } else {
-                        // Novo item do local — adiciona na lista
                         TagItem tag = new TagItem(epcCompleto, localIdAtivo);
                         tag.descricao = descricao;
                         tag.status    = "NO LOCAL";
@@ -465,7 +479,6 @@ public class LeituraLocalActivity extends AppCompatActivity {
                 }
             }
 
-            // ✅ Passo 2b: itens que estão na lista mas não existem na API → NAO ENCONTRADO
             for (TagItem tag : listaTags) {
                 if ("NO LOCAL".equals(tag.status) && !mapaTodosAtivos.containsKey(tag.epcChave)) {
                     tag.status = "NAO_ENCONTRADO";
@@ -505,6 +518,7 @@ public class LeituraLocalActivity extends AppCompatActivity {
                 break;
             case "MOVIMENTADO":
                 opcoes = new String[]{
+                        "🔄 Confirmar MOVIMENTADO", // ← confirmação explícita
                         "❌ NÃO ENCONTRADO",
                         "✅ ENCONTRADO"
                 };
@@ -525,44 +539,85 @@ public class LeituraLocalActivity extends AppCompatActivity {
         }
 
         new AlertDialog.Builder(this)
-                .setTitle("EPC: " + tag.epc + "\n" + tag.descricao) // ✅ info no título
-                // ❌ remova o .setMessage() — conflita com .setItems()
+                .setTitle("EPC: " + tag.epc + "\n" + tag.descricao)
                 .setItems(opcoes, (dialog, which) -> {
                     String opcao = opcoes[which];
-                    String novoStatus;
 
-                    if (opcao.contains("ENCONTRADO") && !opcao.contains("NÃO")) {
-                        novoStatus = "ENCONTRADO";
-                    } else if (opcao.contains("MOVIMENTADO")) {
-                        novoStatus = "MOVIMENTADO";
+                    if (opcao.contains("MOVIMENTADO")) {
+                        // ✅ MOVIMENTADO exige confirmação extra
+                        confirmarMovimentado(tag);
                     } else {
-                        novoStatus = "NAO_ENCONTRADO";
+                        // ENCONTRADO ou NAO_ENCONTRADO — aplica direto
+                        String novoStatus = (opcao.contains("ENCONTRADO") && !opcao.contains("NÃO"))
+                                ? "ENCONTRADO" : "NAO_ENCONTRADO";
+
+                        tag.status           = novoStatus;
+                        tag.statusConfirmado = true;
+
+                        Log.d(TAG, "✏️ Reclassificado: " + tag.epcChave + " → " + novoStatus);
+
+                        salvarStatusNoBanco(tag, novoStatus);
+                        adapter.notifyDataSetChanged();
+                        atualizarContador();
+                        ajustarAlturaListView();
                     }
-
-                    tag.status           = novoStatus;
-                    tag.statusConfirmado = true;
-
-                    Log.d(TAG, "✏️ Reclassificado: " + tag.epcChave + " → " + novoStatus);
-
-                    try {
-                        JSONObject salvar   = new JSONObject();
-                        JSONObject ativoApi = mapaTodosAtivos.get(tag.epcChave);
-                        if (ativoApi != null) salvar.put("id", ativoApi.optInt("id"));
-                        salvar.put("rfid",          tag.epc);
-                        salvar.put("descricao",     tag.descricao);
-                        salvar.put("status",        novoStatus);
-                        salvar.put("localizacaoId", tag.localizacaoId);
-                        dbHelper.salvarOuAtualizarAtivoSimples(salvar);
-                    } catch (Exception e) {
-                        Log.e(TAG, "Erro salvar reclassificação", e);
-                    }
-
-                    adapter.notifyDataSetChanged();
-                    atualizarContador();
-                    ajustarAlturaListView();
                 })
                 .setNegativeButton("Cancelar", null)
                 .show();
+    }
+
+    private void confirmarMovimentado(TagItem tag) {
+        // Nome do local de origem (onde o ativo estava cadastrado)
+        String nomeLocalOrigem = mapaLocais.containsKey(tag.localizacaoId)
+                ? mapaLocais.get(tag.localizacaoId)
+                : "Local " + tag.localizacaoId;
+
+        // Nome do local de destino (local que está sendo inventariado agora)
+        int localDestinoId = obterUltimaLocalizacao(localizacaoSelecionada);
+        String nomeLocalDestino = mapaLocais.containsKey(localDestinoId)
+                ? mapaLocais.get(localDestinoId)
+                : obterNomeLocal(localizacaoSelecionada);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Confirmar Movimentação")
+                .setMessage("Deseja realmente marcar como MOVIMENTADO?\n\n"
+                        + tag.descricao + "\nEPC: " + tag.epc
+                        + "\n\n📍 Local de origem: " + nomeLocalOrigem
+                        + "\n➡️ Sendo encontrado em: " + nomeLocalDestino
+                        + "\n\nEsta ação irá atualizar a localização do ativo.")
+                .setPositiveButton("Sim, confirmar", (dialog, which) -> {
+                    tag.status           = "MOVIMENTADO";
+                    tag.statusConfirmado = true;
+
+                    Log.d(TAG, "✏️ MOVIMENTADO confirmado: " + tag.epcChave);
+
+                    salvarStatusNoBanco(tag, "MOVIMENTADO");
+                    adapter.notifyDataSetChanged();
+                    atualizarContador();
+                    ajustarAlturaListView();
+
+                    Toast.makeText(this, "Item marcado como MOVIMENTADO", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void salvarStatusNoBanco(TagItem tag, String status) {
+        try {
+            JSONObject salvar   = new JSONObject();
+            JSONObject ativoApi = mapaTodosAtivos.get(tag.epcChave);
+            if (ativoApi != null) salvar.put("id", ativoApi.optInt("id"));
+            salvar.put("rfid",          tag.epc);
+            salvar.put("descricao",     tag.descricao);
+            // ✅ Só salva MOVIMENTADO se confirmado
+            String statusReal = ("MOVIMENTADO".equals(status) && !tag.statusConfirmado)
+                    ? "NAO_ENCONTRADO" : status;
+            salvar.put("status",        statusReal);
+            salvar.put("localizacaoId", tag.localizacaoId);
+            dbHelper.salvarOuAtualizarAtivoSimples(salvar);
+        } catch (Exception e) {
+            Log.e(TAG, "Erro salvar status no banco", e);
+        }
     }
 
     // ===========================
@@ -689,15 +744,19 @@ public class LeituraLocalActivity extends AppCompatActivity {
         // ✅ Atualiza objeto existente na lista (sem duplicata)
         TagItem tagExistente = mapaTags.get(chave);
         if (tagExistente != null) {
-            tagExistente.status       = status;
-            tagExistente.descricao    = descricao;
+            // ✅ Só atualiza status se não foi confirmado pelo usuário via dialog
+            if (!tagExistente.statusConfirmado) {
+                tagExistente.status = status;
+            }
+            tagExistente.descricao     = descricao;
             tagExistente.localizacaoId = localBanco;
-            Log.d(TAG, "✅ ATUALIZADO: " + chave + " → " + status);
+            Log.d(TAG, "✅ ATUALIZADO: " + chave + " → " + tagExistente.status);
         } else {
             // Não estava na lista (ex: movimentada de outro local, ou não cadastrada)
             TagItem nova = new TagItem(chave, localBanco);
-            nova.descricao = descricao;
-            nova.status    = status;
+            nova.descricao        = descricao;
+            nova.status           = status;
+            nova.statusConfirmado = false; // ← RFID automático, nunca confirmado
             listaTags.add(nova);
             mapaTags.put(chave, nova);
             Log.d(TAG, "➕ NOVA TAG LIDA: " + chave + " → " + status);
@@ -709,7 +768,9 @@ public class LeituraLocalActivity extends AppCompatActivity {
             if (ativoApi != null) salvar.put("id", ativoApi.optInt("id"));
             salvar.put("rfid",          chave);
             salvar.put("descricao",     descricao);
-            salvar.put("status",        status);
+            // ✅ Se MOVIMENTADO sem confirmação → salva como NAO_ENCONTRADO no banco
+            String statusParaSalvar = ("MOVIMENTADO".equals(status)) ? "NAO_ENCONTRADO" : status;
+            salvar.put("status",        statusParaSalvar);
             salvar.put("localizacaoId", localBanco);
             dbHelper.salvarOuAtualizarAtivoSimples(salvar);
         } catch (Exception e) {
@@ -807,7 +868,8 @@ public class LeituraLocalActivity extends AppCompatActivity {
                             statusParaApi = "MOVIMENTADO";
                         } else {
                             // ✅ Lido pelo RFID sem confirmação → protege e manda NAO_ENCONTRADO
-                            statusParaApi = "NAO_ENCONTRADO";
+                            statusParaApi = "NAO_ENCONTRADO"; // 🔒 não confirmado → protege
+                            tag.status    = "NAO_ENCONTRADO"; // ✅ corrige o status visual também
                             Log.d(TAG, "🔒 PROTEGIDO: " + tag.epcChave
                                     + " era MOVIMENTADO sem confirmação → NAO_ENCONTRADO");
                         }

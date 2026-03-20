@@ -12,11 +12,21 @@ import com.example.uhf.R;
 import com.example.uhf.activity.LeituraLocalActivity;
 
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 public class TagItemAdapter extends ArrayAdapter<LeituraLocalActivity.TagItem> {
 
+    private final Map<Integer, String> mapaLocais;
+
     public TagItemAdapter(Context context, List<LeituraLocalActivity.TagItem> tags) {
         super(context, 0, tags);
+        this.mapaLocais = new HashMap<>(); // mapa vazio como fallback
+    }
+
+    public TagItemAdapter(Context context, List<LeituraLocalActivity.TagItem> tags, Map<Integer, String> mapaLocais) {
+        super(context, 0, tags);
+        this.mapaLocais = mapaLocais;
     }
 
     @Override
@@ -31,92 +41,49 @@ public class TagItemAdapter extends ArrayAdapter<LeituraLocalActivity.TagItem> {
 
         LeituraLocalActivity.TagItem tag = getItem(position);
 
-        TextView tvEpc = itemView.findViewById(R.id.tvEpcInventario);
-        TextView tvDescricao = itemView.findViewById(R.id.tvDescricaoInventario);
-        TextView tvStatus = itemView.findViewById(R.id.tvStatusInventario);
+        TextView tvEpc         = itemView.findViewById(R.id.tvEpcInventario);
+        TextView tvDescricao   = itemView.findViewById(R.id.tvDescricaoInventario);
+        TextView tvStatus      = itemView.findViewById(R.id.tvStatusInventario);
+        TextView tvLocal       = itemView.findViewById(R.id.tvLocal); // ← era convertView, corrigido para itemView
         ImageView imgPatrimonio = itemView.findViewById(R.id.imgPatrimonioInventario);
 
         if (tag != null) {
 
-            // 🔹 EPC (melhor: últimos dígitos)
             String epcCurto = tag.epc.length() > 8
                     ? tag.epc.substring(tag.epc.length() - 8)
                     : tag.epc;
-
             tvEpc.setText("EPC: " + epcCurto);
 
-            // 🔥 DESCRIÇÃO (nunca vazia)
-            if(tag.descricao != null && !tag.descricao.trim().isEmpty()){
-                tvDescricao.setText(tag.descricao);
-            } else {
-                tvDescricao.setText("Sem descrição");
-            }
+            tvDescricao.setText(tag.descricao != null && !tag.descricao.trim().isEmpty()
+                    ? tag.descricao : "Sem descrição");
 
-            // 🔹 STATUS TEXTO (mais amigável)
-            String statusTexto = tag.status;
+            // ✅ Nome do local via mapa, fallback para ID
+            String nomeLocal = mapaLocais.containsKey(tag.localizacaoId)
+                    ? mapaLocais.get(tag.localizacaoId)
+                    : "Local " + tag.localizacaoId;
+            tvLocal.setText(nomeLocal);
 
-            switch (tag.status){
-
-                case "ENCONTRADO":
-                    statusTexto = "Encontrado";
-                    break;
-
-                case "MOVIMENTADO":
-                    statusTexto = "Movimentado";
-                    break;
-
-                case "NAO_ENCONTRADO":
-                    statusTexto = "Não encontrado";
-                    break;
-
-                case "NO LOCAL":
-                    statusTexto = "No Local";
-                    break;
-            }
-
-            tvStatus.setText(statusTexto);
-
-            // 🔥 RESET BACKGROUND (evita bug de reciclagem)
-            tvStatus.setBackgroundResource(R.drawable.status_padrao);
-
-            // 🔥 CORES POR STATUS
             switch (tag.status) {
-
-                case "ENCONTRADO":
-                    tvStatus.setBackgroundResource(R.drawable.status_encontrado);
-                    break;
-
-                case "MOVIMENTADO":
-                    tvStatus.setBackgroundResource(R.drawable.status_movimentado);
-                    break;
-
-                case "NAO_ENCONTRADO":
-                    tvStatus.setBackgroundResource(R.drawable.status_nao_encontrado);
-                    break;
-
-                case "NO LOCAL":
-                    tvStatus.setBackgroundResource(R.drawable.status_no_local);
-                    break;
+                case "ENCONTRADO":    tvStatus.setText("Encontrado");     break;
+                case "MOVIMENTADO":   tvStatus.setText("Movimentado");    break;
+                case "NAO_ENCONTRADO": tvStatus.setText("Não encontrado"); break;
+                case "NO LOCAL":      tvStatus.setText("No Local");       break;
+                default:              tvStatus.setText(tag.status);       break;
             }
 
-            // 🔥 ÍCONE DIFERENTE POR STATUS (opcional top)
-            switch (tag.status){
+            tvStatus.setBackgroundResource(R.drawable.status_padrao);
+            switch (tag.status) {
+                case "ENCONTRADO":    tvStatus.setBackgroundResource(R.drawable.status_encontrado);     break;
+                case "MOVIMENTADO":   tvStatus.setBackgroundResource(R.drawable.status_movimentado);    break;
+                case "NAO_ENCONTRADO": tvStatus.setBackgroundResource(R.drawable.status_nao_encontrado); break;
+                case "NO LOCAL":      tvStatus.setBackgroundResource(R.drawable.status_no_local);       break;
+            }
 
-                case "ENCONTRADO":
-                    imgPatrimonio.setImageResource(R.drawable.ic_ok);
-                    break;
-
-                case "MOVIMENTADO":
-                    imgPatrimonio.setImageResource(R.drawable.ic_alerta);
-                    break;
-
-                case "NAO_ENCONTRADO":
-                    imgPatrimonio.setImageResource(R.drawable.ic_erro);
-                    break;
-
-                default:
-                    imgPatrimonio.setImageResource(R.drawable.ic_etiqueta);
-                    break;
+            switch (tag.status) {
+                case "ENCONTRADO":    imgPatrimonio.setImageResource(R.drawable.ic_ok);      break;
+                case "MOVIMENTADO":   imgPatrimonio.setImageResource(R.drawable.ic_alerta);  break;
+                case "NAO_ENCONTRADO": imgPatrimonio.setImageResource(R.drawable.ic_erro);   break;
+                default:              imgPatrimonio.setImageResource(R.drawable.ic_etiqueta); break;
             }
         }
 

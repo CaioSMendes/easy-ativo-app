@@ -104,7 +104,8 @@
                 android:text="Sincronizar"
                 android:textColor="#FFFFFF"
                 android:background="@drawable/bg_button_sync"
-                android:layout_marginTop="20dp"/>
+                android:layout_marginTop="20dp"
+                android:visibility="gone"/>
 
             <Button
                 android:id="@+id/btnLogout"

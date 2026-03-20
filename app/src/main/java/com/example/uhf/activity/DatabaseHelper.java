@@ -122,6 +122,20 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return obj;
     }
 
+    public String buscarNomeLocalPorId(int id) {
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor cursor = db.rawQuery(
+                "SELECT nome FROM localizacao WHERE id = ?",
+                new String[]{String.valueOf(id)}
+        );
+        String nome = "Local " + id;
+        if (cursor.moveToFirst()) {
+            nome = cursor.getString(0);
+        }
+        cursor.close();
+        return nome;
+    }
+
     /* =========================
        LOCALIZAÇÃO
        ========================= */

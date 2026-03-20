@@ -61,7 +61,8 @@
                 android:text="Módulo Inventário"
                 android:textSize="20sp"
                 android:textStyle="bold"
-                android:textColor="#EF5927"/>
+                android:textColor="#EF5927"
+                android:visibility="gone"/>
 
             <View
                 android:layout_width="match_parent"
